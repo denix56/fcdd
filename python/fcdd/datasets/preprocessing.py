@@ -1,11 +1,14 @@
 import torchvision.transforms as transforms
 import torchvision.transforms.functional as TF
 import torch
+import torch.nn.functional as F
 import numpy as np
 import random
 from abc import abstractmethod
 from typing import Callable
-
+from kornia.filters import get_gaussian_kernel2d
+import cv2
+from PIL import Image
 
 class TargetTransFunctor(object):
     def __init__(self, anomalous_label: int, outlier_classes: [int], nominal_label: int):
@@ -29,6 +32,114 @@ def local_contrast_normalization_func(x):
     return local_contrast_normalization(x, scale='l1')
 
 
+def local_contrast_normalization_func2(x):
+    return local_contrast_normalization2(x, radius=3)
+
+
+def remove_glare(x):
+    img = np.asarray(x)
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    mask = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY)[1]
+    result = np.zeros_like(img)
+    cv2.xphoto.inpaint(img, ~mask, result, cv2.xphoto.INPAINT_FSR_FAST)
+
+    return Image.fromarray(result)
+
+
+# def __find_main_red_line(img, mask):
+#     contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+#
+#     if not contours:
+#         return mask
+#     #
+#     hierarchy = np.squeeze(hierarchy, 0)
+#
+#     contours_areas = [cv2.contourArea(cnt) for cnt in contours]
+#     contours_rects = [cv2.boundingRect(cnt) for cnt in contours]
+#     #
+#     contours_areas_new = np.zeros((len(contours_areas)))
+#     for i, area in enumerate(contours_areas):
+#         child = hierarchy[i, 2]
+#         child_area = 0
+#         while child != -1:
+#             child_area += contours_areas[child]
+#             child = hierarchy[child, 0]
+#         contours_areas_new[i] = area - child_area
+#     contours_areas = contours_areas_new
+#     #
+#     contours_rects = [cnt for i, cnt in enumerate(contours_rects) if contours_areas[i] > 2000 and \
+#                 contours_rects[i][2] == img.shape[1]]
+#     contours_sorted = np.argsort(contours_areas)[::-1]
+#     contours_sorted = contours_sorted[hierarchy[contours_sorted, 3] == -1]
+#     #
+#     if len(contours_sorted) > 1:
+#         main_cnt = contours_sorted[0]
+#
+#
+#         if count1 > 0 and contours_areas[contours_sorted[1]] > 2500:
+#             child = hierarchy[contours_sorted[1], 2]
+#             count2 = 0
+#             while child != -1:
+#                 count2 += 1
+#                 child = hierarchy[child, 0]
+#
+#             if count2 < count1:
+#                 main_cnt = contours_sorted[1]
+#
+#     else:
+#         main_cnt = contours_sorted[0]
+#
+#     # mask = np.zeros_like(mask)
+#     # for (x, y, w, h) in contours_rects:
+#     #     mask[y:y+h, ...] = 255
+#
+#     # contours = [cnt for i, cnt in enumerate(contours) if cv2.boundingRect(cnt)]
+#     # cv2.drawContours(mask, contours, -1, (255), -1)
+
+
+def remove_red_lines(x):
+    img = np.asarray(x).copy()
+
+    ## (1) Read and convert to HSV
+    hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+
+    mask1 = cv2.inRange(hsv, (0, 70, 50), (10, 255, 255))
+    mask2 = cv2.inRange(hsv, (170, 70, 50), (180, 255, 255))
+
+    mask = mask1 | mask2
+    img[mask > 0] = 0
+
+    return Image.fromarray(img)
+
+
+class CLAHE:
+    def __init__(self, clipLimit=2.0, tileGridSize=(8, 8)):
+        self.clipLimit = clipLimit
+        self.tileGridSize = tileGridSize
+        self.clahe = None
+
+    def __call__(self, x):
+        img = np.asarray(x)
+
+        is_rgb = len(img.shape) == 3 and img.shape[2] == 3
+
+        if is_rgb:
+            lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
+            lab_planes = cv2.split(lab)
+
+        if self.clahe is None:
+            self.clahe = cv2.createCLAHE(clipLimit=self.clipLimit, tileGridSize=self.tileGridSize)
+
+        if is_rgb:
+            lab_planes[0] = self.clahe.apply(lab_planes[0])
+            lab = cv2.merge(lab_planes)
+            res = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+        else:
+            res = self.clahe.apply(img)
+
+        return Image.fromarray(res)
+
+
 def get_target_label_idx(labels: np.ndarray, targets: np.ndarray):
     """
     Get the indices of labels that are included in targets.
@@ -37,6 +148,39 @@ def get_target_label_idx(labels: np.ndarray, targets: np.ndarray):
     :return: list with indices of target labels
     """
     return np.argwhere(np.isin(labels, targets)).flatten().tolist()
+
+
+def local_contrast_normalization2(image: torch.tensor, radius=9):
+    """
+    image: torch.Tensor , .shape => (1,channels,height,width)
+
+    radius: Gaussian filter size (int), odd
+    """
+    if radius % 2 == 0:
+        radius += 1
+
+    image = image.unsqueeze(0)
+
+    n, c, h, w = image.shape[0], image.shape[1], image.shape[2], image.shape[3]
+    sigma = 2.0
+
+    gaussian_filter = get_gaussian_kernel2d((radius, radius),
+                                            (sigma, sigma)).unsqueeze(0).unsqueeze(1).to(image).expand(-1, c, -1, -1)
+    filtered_out =  F.conv2d(image, gaussian_filter, padding=radius - 1)
+    mid = int(np.floor(gaussian_filter.shape[2] / 2.))
+    ### Subtractive Normalization
+    centered_image = image - filtered_out[:, :, mid:-mid, mid:-mid]
+
+    ## Variance Calc
+    sum_sqr_image = F.conv2d(centered_image.pow(2), gaussian_filter, padding=radius - 1)
+    s_deviation = sum_sqr_image[:, :, mid:-mid, mid:-mid].sqrt()
+    per_img_mean = s_deviation.mean().item()
+
+    ## Divisive Normalization
+    per_img_mean = np.maximum(per_img_mean, 1e-4)
+    divisor = s_deviation.clamp(min=per_img_mean)
+    new_image = centered_image / divisor
+    return new_image.squeeze(0)
 
 
 def local_contrast_normalization(x: torch.tensor, scale: str = 'l2'):

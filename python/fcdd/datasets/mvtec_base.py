@@ -72,7 +72,6 @@ class MvTec(VisionDataset, GTMapADDataset):
         self.normal_classes = normal_classes
         self.nominal_label = nominal_label
         self.anom_label = anomalous_label
-        self.logger = logger
         self.enlarge = enlarge
 
         if download:

@@ -25,5 +25,5 @@ class HSCTrainer(BaseADTrainer):
         return loss.mean() if reduce == 'mean' else loss
 
     def snapshot(self, epochs: int):
-        self.logger.snapshot(self.net, self.opt, self.sched, epochs)
+        Logger.logger().snapshot(self.net, self.opt, self.sched, epochs)
 

@@ -21,6 +21,8 @@ from matplotlib import cm
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
+from concurrent.futures import ThreadPoolExecutor
+
 MARKERS = ('.', 'x', '*', '+', 's', 'v', 'D', '1', 'p', '8', '2', '3', '4', '^', '<', '>', 'P', 'X', 'd', '|', '_')
 
 
@@ -73,8 +75,9 @@ def colorize(imgs: [Tensor], norm=True, rgb=True, cmap='jet') -> [Tensor]:
             imgs[j] = img
     return imgs
 
-
 class Logger(object):
+    __logger = None
+
     """
     A customizable logger that is passed to Trainer instances to log data during training and testing.
     The .log method needs to be invoked at the end of every training iteration, i.e. each time after
@@ -115,6 +118,14 @@ class Logger(object):
         self.loggingtxt = ''
         self.printlog = ''
         self.__warnings = []
+        self.pool = ThreadPoolExecutor(max_workers=1)
+
+    @staticmethod
+    def logger(logdir=None, exp_start_time=None):
+        if Logger.__logger is None and logdir is not None:
+            Logger.__logger = Logger(pt.abspath(pt.join(logdir, '')), exp_start_time=exp_start_time)
+        return Logger.__logger
+
 
     def reset(self, logdir: str = None, exp_start_time: float = None):
         """
@@ -447,7 +458,23 @@ class Logger(object):
         )
         return outfile
 
-    def save_params(self, net: torch.nn.Module, params: str, subdir='.'):
+    def __save_code(self, outfile: str):
+        # def filter(tarinfo):
+        #     exclude = re.compile('(.*__pycache__.*)|(.*{}.*)'.format(os.sep+'venv'+os.sep))
+        #     if not exclude.fullmatch(tarinfo.name):
+        #         return tarinfo
+        #     else:
+        #         return None
+        #
+        # if not pt.exists(os.path.dirname(outfile)):
+        #     os.makedirs(os.path.dirname(outfile))
+        # with tarfile.open(outfile, "w:gz") as tar:
+        #     root = pt.join(pt.dirname(__file__), '..')
+        #     tar.add(root, arcname=os.path.basename(root), filter=filter)
+
+        self.print('Successfully saved code at {}'.format(outfile), fps=False)
+
+    def save_params(self, net: torch.nn.Module, params: str, subdir='.', background=True):
         """
         Writes a string representation of the network and all given parameters as text to a
         configuration file named config.txt in the log directory.
@@ -463,21 +490,11 @@ class Logger(object):
         with open(outfile, 'w') as writer:
             writer.write("{}\n\n{}".format(net, params))
 
-        def filter(tarinfo):
-            exclude = re.compile('(.*__pycache__.*)|(.*{}.*)'.format(os.sep+'venv'+os.sep))
-            if not exclude.fullmatch(tarinfo.name):
-                return tarinfo
-            else:
-                return None
-
         outfile = pt.join(self.dir, subdir, 'src.tar.gz')
-        if not pt.exists(os.path.dirname(outfile)):
-            os.makedirs(os.path.dirname(outfile))
-        with tarfile.open(outfile, "w:gz") as tar:
-            root = pt.join(pt.dirname(__file__), '..')
-            tar.add(root, arcname=os.path.basename(root), filter=filter)
-
-        self.print('Successfully saved code at {}'.format(outfile), fps=False)
+        if background:
+            self.pool.submit(self.__save_code, outfile)
+        else:
+            self.__save_code(outfile)
 
     def logtxt(self, s: str, print=False):
         """
@@ -521,7 +538,6 @@ class Logger(object):
 
     class Timer(object):
         def __init__(self, logger, msg):
-            self.logger = logger
             self.msg = msg
             self.start = None
 
@@ -529,7 +545,7 @@ class Logger(object):
             self.start = time.time()
 
         def __exit__(self, exc_type, exc_val, exc_tb):
-            self.logger.print('{} took {} seconds.'.format(self.msg, time.time() - self.start))
+            Logger.logger().print('{} took {} seconds.'.format(self.msg, time.time() - self.start))
 
 
 def plot_many_roc(logdir: str, results: [dict], labels: [str] = None, name: str = 'roc', mean: bool = False):
@@ -565,4 +581,3 @@ def plot_many_roc(logdir: str, results: [dict], labels: [str] = None, name: str 
     plt.legend(legend,  fontsize='xx-small' if len(legend) > 20 else 'x-small')
     plt.savefig(outfile, format='pdf')
     plt.close()
-

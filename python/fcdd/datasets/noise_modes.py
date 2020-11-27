@@ -7,7 +7,7 @@ import torch
 
 MODES = [
     'gaussian', 'uniform', 'blob', 'mixed_blob', 'solid', 'confetti',  # Synthetic Anomalies
-    'imagenet', 'imagenet22k', 'cifar100', 'emnist',  # Outlier Exposure
+    'imagenet', 'imagenet22k', 'cifar100', 'emnist', 'keen',  # Outlier Exposure
     'mvtec', 'mvtec_gt'  # Outlier Exposure online supervision only
 ]
 

@@ -96,7 +96,6 @@ class MyImageFolder(DatasetFolder):
         if transform is not None or target_transform is not None:
             transforms = StandardTransform(transform, target_transform)
         self.transforms = transforms
-        self.logger = logger
         self.loader = default_loader
         self.extensions = extensions = IMG_EXTENSIONS if is_valid_file is None else None
 
@@ -148,13 +147,13 @@ class MyImageFolder(DatasetFolder):
 
     def logprint(self, s, fps=True):
         if self.logger is not None:
-            self.logger.print(s, fps=fps)
+            Logger.logger().print(s, fps=fps)
         else:
             print(s)
 
     def logwarning(self, s, err):
         if self.logger is not None:
-            self.logger.warning(s)
+            Logger.logger().warning(s)
         else:
             raise err
 
@@ -262,7 +261,6 @@ class OEImageNet22k(MyImageNet22K):
         root = pt.join(root, 'imagenet22k') if not root.endswith('imagenet') else pt.join(root, '..', 'imagenet22k')
         root = pt.join(root, 'fall11_whole_extracted')  # important to have a second layer, to speed up load meta file
         self.root = root
-        self.logger = logger
         with logger.timeit('Loading ImageNet22k'):
             super().__init__(root=root, size=size, logger=logger)
 

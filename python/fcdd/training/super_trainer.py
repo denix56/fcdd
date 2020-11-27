@@ -9,11 +9,13 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.optim.optimizer import Optimizer
 from torch.utils.data.dataloader import DataLoader
 
+from fcdd.util.logging import Logger
+
 
 class SuperTrainer(object):
     def __init__(
             self, net: BaseNet, opt: Optimizer, sched: _LRScheduler, dataset_loaders: (DataLoader, DataLoader),
-            logger: Logger, tb_logger: TBLogger, device=torch.device('cuda:0'), objective='fcdd',
+            logger: Logger, tb_logger: TBLogger, save_epoch: int, save_dir: str, device=torch.device('cuda:0'), objective='fcdd',
             quantile=0.93, resdown=64, gauss_std: float = None, blur_heatmaps=True
     ):
         """
@@ -50,18 +52,23 @@ class SuperTrainer(object):
 
         if objective == 'fcdd':
             self.trainer = FCDDTrainer(
-                net, opt, sched, dataset_loaders, logger, tb_logger, objective, gauss_std, quantile, resdown, blur_heatmaps, device
+                net=net, opt=opt, sched=sched, dataset_loaders=dataset_loaders, logger=logger, tb_logger=tb_logger,
+                objective=objective, gauss_std=gauss_std, quantile=quantile, resdown=resdown,
+                blur_heatmaps=blur_heatmaps, device=device, save_epoch=save_epoch, save_dir=save_dir
             )
         elif objective == 'hsc':
             self.trainer = HSCTrainer(
-                net, opt, sched, dataset_loaders, logger, tb_logger, objective, gauss_std, quantile, resdown, blur_heatmaps, device
+                net=net, opt=opt, sched=sched, dataset_loaders=dataset_loaders, logger=logger, tb_logger=tb_logger,
+                objective=objective, gauss_std=gauss_std, quantile=quantile, resdown=resdown,
+                blur_heatmaps=blur_heatmaps, device=device, save_epoch=save_epoch, save_dir=save_dir
             )
         else:
             self.trainer = AETrainer(
-                net, opt, sched, dataset_loaders, logger, tb_logger, objective, gauss_std, quantile, resdown, blur_heatmaps, device
+                net=net, opt=opt, sched=sched, dataset_loaders=dataset_loaders, logger=logger, tb_logger=tb_logger,
+                objective=objective, gauss_std=gauss_std, quantile=quantile, resdown=resdown,
+                blur_heatmaps=blur_heatmaps, device=device, save_epoch=save_epoch, save_dir=save_dir
             )
 
-        self.logger = logger
         self.tb_logger = tb_logger
         self.res = {}  # keys = {pt_roc, roc, gtmap_roc, prc, gtmap_prc}
 
@@ -81,8 +88,8 @@ class SuperTrainer(object):
         try:
             self.trainer.train(epochs - start, acc_batches)
         finally:
-            self.logger.save()
-            self.logger.plot()
+            Logger.logger().save()
+            Logger.logger().plot()
             self.trainer.snapshot(epochs)
 
     def test(self, specific_viz_ids: ([int], [int]) = ()) -> dict:

@@ -161,6 +161,15 @@ class DefaultConfig(object):
                  'if they exceed this threshold. For instance, resdown=64 makes every image of heatmaps contain '
                  'individual heatmaps and inputs of width 64 and height 64 at most.'
         )
+        parser.add_argument(
+            '--save_epoch', type=int, default=5,
+            help='Saves the model on each nth epoch.'
+        )
+
+        parser.add_argument(
+            '--save_dir', type=str, default='models',
+            help='Dir to save model .'
+        )
 
         parser.set_defaults(cuda=True, bias=True, blur_heatmaps=False, online_supervision=True)
         return parser
@@ -225,3 +234,15 @@ class DefaultPascalvocConfig(DefaultConfig):
         )
         return parser
 
+
+class DefaultKeenConfig(DefaultConfig):
+    def __call__(self, parser: ArgumentParser) -> ArgumentParser:
+        parser = super().__call__(parser)
+        parser.set_defaults(
+            batch_size=8, acc_batches=10, epochs=600,
+            optimizer_type='adam', scheduler_type='milestones',
+            lr_sched_param=[0.1, 400, 500], dataset='keen',
+            net='FCDD_CNN224_VGG_NOPT', quantile=0.85,
+            noise_mode='keen', gauss_std=8,
+        )
+        return parser

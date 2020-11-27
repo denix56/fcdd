@@ -50,7 +50,7 @@ class ReceptiveModule(torch.nn.Module, ABC):
         if self.reception is None or any([i not in self.reception for i in ['j', 's', 'r', 'img_shape']]) \
                 or not reception:
             if reception:
-                self.logger.logtxt(
+                Logger.logger().logtxt(
                     'Fell back on nearest neighbor upsampling since reception was not available!', print=True
                 )
             return self.__upsample_nn(pixels)
@@ -59,7 +59,9 @@ class ReceptiveModule(torch.nn.Module, ABC):
             pixels = pixels.squeeze()
             if self.reception is None:
                 raise ValueError('receptive field is unknown!')
-            ishape = self.reception['img_shape']
+            ishape = list(self.reception['img_shape'])
+            ishape[-2] = 512
+            ishape[-1] = 256
             pixshp = pixels.shape
             # regarding s: if between pixels, pick the first
             s, j, r = int(self.reception['s']), self.reception['j'], self.reception['r']
@@ -68,12 +70,14 @@ class ReceptiveModule(torch.nn.Module, ABC):
             if (r - 1) % 2 == 0:
                 res = torch.nn.functional.conv_transpose2d(
                     pixels.unsqueeze(1), gaus.unsqueeze(0).unsqueeze(0), stride=j, padding=0,
-                    output_padding=ishape[-1] - (pixshp[-1] - 1) * j - 1
+                    output_padding=(ishape[-2] - (pixshp[-2] - 1) * j - 1,
+                                    ishape[-1] - (pixshp[-1] - 1) * j - 1)
                 )
             else:
                 res = torch.nn.functional.conv_transpose2d(
                     pixels.unsqueeze(1), gaus.unsqueeze(0).unsqueeze(0), stride=j, padding=0,
-                    output_padding=ishape[-1] - (pixshp[-1] - 1) * j - 1 - 1
+                    output_padding=(ishape[-2] - (pixshp[-2] - 1) * j - 1,
+                                    ishape[-1] - (pixshp[-1] - 1) * j - 1)
                 )
             out = res[:, :, pad - s:-pad - s, pad - s:-pad - s]  # shift by receptive center (s)
             return out if not cpu else out.cpu()

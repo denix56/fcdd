@@ -14,7 +14,7 @@ class FCDD_CNN224_VGG_NOPT(FCDDNet):
         assert self.bias, 'VGG net is only supported with bias atm!'
 
         self.features = nn.Sequential(
-            self._create_conv2d(3, 64, 3, 1, 1),
+            self._create_conv2d(in_shape[0], 64, 3, 1, 1),
             nn.BatchNorm2d(64),
             nn.ReLU(True),
             self._create_maxpool2d(2, 2),

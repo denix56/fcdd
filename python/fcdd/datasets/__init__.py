@@ -3,11 +3,12 @@ from fcdd.datasets.fmnist import ADFMNIST
 from fcdd.datasets.mvtec import ADMvTec
 from fcdd.datasets.imagenet import ADImageNet
 from fcdd.datasets.pascal_voc import ADPascalVoc
+from fcdd.datasets.keen import ADKeen
 from copy import deepcopy
 
-DS_CHOICES = ('mnist', 'cifar10', 'fmnist', 'mvtec', 'imagenet', 'pascalvoc')
+DS_CHOICES = ('mnist', 'cifar10', 'fmnist', 'mvtec', 'imagenet', 'pascalvoc', 'keen')
 PREPROC_CHOICES = (
-    'lcn', 'lcnaug1', 'aug1', 'aug1_blackcenter', 'aug1_blackcenter_inverted'
+    'lcn', 'lcnaug1', 'aug1', 'aug1_blackcenter', 'aug1_blackcenter_inverted', 'none'
 )
 
 
@@ -51,6 +52,12 @@ def load_dataset(dataset_name: str, data_path: str, normal_class: int, preproc: 
             supervise_mode=supervise_mode, noise_mode=noise_mode, online_supervision=online_supervision,
             oe_limit=oe_limit, logger=logger, nominal_label=nominal_label
         )
+    elif dataset_name == 'keen':
+        dataset = ADKeen(
+            root=data_path, normal_class=normal_class, preproc=preproc,
+            supervise_mode=supervise_mode, noise_mode=noise_mode, online_supervision=online_supervision,
+            oe_limit=oe_limit, logger=logger, nominal_label=nominal_label
+        )
 
     return dataset
 
@@ -62,6 +69,7 @@ def no_classes(dataset_name):
         'mvtec': 15,
         'imagenet': 30,
         'pascalvoc': 1,
+        'keen': 2
     }[dataset_name]
 
 
@@ -77,5 +85,6 @@ def str_labels(dataset_name):
             'wood', 'zipper'
         ],
         'imagenet': deepcopy(ADImageNet.ad_classes),
-        'pascalvoc': ['horse']
+        'pascalvoc': ['horse'],
+        'keen': ['normal', 'flooding']
     }[dataset_name]

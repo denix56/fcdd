@@ -79,7 +79,7 @@ class BaseRunner(object):
             del vars(self.args)['logdir_suffix']
         self.start = int(time.time())
         self.__backup, self.__bk_test = None, None
-        self._test = True
+        self._test = False
 
     def run(self):
         self.run_one(**vars(self.args))
@@ -213,7 +213,7 @@ class ClassesRunner(SeedsRunner):
         if 'cls_restrictions' in kwargs:
             classes = kwargs['cls_restrictions'] if kwargs['cls_restrictions'] is not None else classes
             del kwargs['cls_restrictions']
-        for c in classes:
+        for c in [0]:
             cls_logdir = pt.join(logdir, 'normal_{}'.format(c))
             kwargs['logdir'] = cls_logdir
             kwargs['normal_class'] = c

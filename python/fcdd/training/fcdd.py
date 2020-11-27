@@ -3,6 +3,8 @@ from fcdd.models.bases import FCDDNet
 from fcdd.training.bases import BaseADTrainer
 from torch import Tensor
 
+from fcdd.util.logging import Logger
+
 
 class FCDDTrainer(BaseADTrainer):
     def loss(self, outs: Tensor, ins: Tensor, labels: Tensor, gtmaps: Tensor = None, reduce='mean'):
@@ -52,5 +54,5 @@ class FCDDTrainer(BaseADTrainer):
         return loss
 
     def snapshot(self, epochs: int):
-        self.logger.snapshot(self.net, self.opt, self.sched, epochs)
+        Logger.logger().snapshot(self.net, self.opt, self.sched, epochs)
 

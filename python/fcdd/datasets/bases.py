@@ -28,8 +28,6 @@ class BaseADDataset(ABC):
         self.shape = None  # shape of datapoints, c x h x w
         self.raw_shape = None  # shape of datapoint before preprocessing is applied, c x h x w
 
-        self.logger = logger
-
     @abstractmethod
     def loaders(self, batch_size: int, shuffle_train=True, shuffle_test=False, num_workers: int = 0) -> (
             DataLoader, DataLoader):
@@ -42,7 +40,7 @@ class BaseADDataset(ABC):
     def logprint(self, s: str, fps: bool = False):
         """ prints a string via the logger """
         if self.logger is not None:
-            self.logger.print(s, fps)
+            Logger.logger().print(s, fps)
         else:
             print(s)
 
@@ -66,13 +64,14 @@ class TorchvisionDataset(BaseADDataset):
         assert not shuffle_test, \
             'using shuffled test raises problems with original GT maps for GT datasets, thus disabled atm!'
         # classes = None means all classes
+
         train_loader = DataLoader(dataset=self.train_set, batch_size=batch_size, shuffle=shuffle_train,
                                   num_workers=num_workers, pin_memory=True)
         test_loader = DataLoader(dataset=self.test_set, batch_size=batch_size, shuffle=shuffle_test,
-                                 num_workers=num_workers, pin_memory=True,)
+                                 num_workers=num_workers, pin_memory=True)
         return train_loader, test_loader
 
-    def preview(self, percls=20, train=True) -> torch.Tensor:
+    def preview(self, percls=20, train=True, num_workers=0) -> torch.Tensor:
         """
         Generates a preview of the dataset, i.e. it generates an image of some randomly chosen outputs
         of the dataloader, including ground-truth maps if available.
@@ -85,9 +84,9 @@ class TorchvisionDataset(BaseADDataset):
         """
         self.logprint('Generating dataset preview...')
         if train:
-            loader, _ = self.loaders(10, num_workers=0, shuffle_train=True)
+            loader, _ = self.loaders(10, num_workers=num_workers, shuffle_train=True)
         else:
-            _, loader = self.loaders(10, num_workers=0, shuffle_test=True)
+            _, loader = self.loaders(10, num_workers=num_workers, shuffle_test=True)
         x, y, gts, out = torch.FloatTensor(), torch.LongTensor(), torch.FloatTensor(), []
         if isinstance(self.train_set, GTMapADDataset):
             for xb, yb, gtsb in loader:

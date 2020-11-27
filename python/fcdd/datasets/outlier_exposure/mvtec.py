@@ -34,7 +34,6 @@ class OEMvTec(MvTec):
         assert len(size) == 4 and size[2] == size[3]
         assert size[1] in [1, 3]
         self.root = root
-        self.logger = logger
         self.size = size
         self.use_gt = gt
         self.clsses = clsses
@@ -98,7 +97,7 @@ class OEMvTec(MvTec):
 
     def logprint(self, s, fps=True):
         if self.logger is not None:
-            self.logger.print(s, fps=fps)
+            Logger.logger().print(s, fps=fps)
         else:
             print(s)
 

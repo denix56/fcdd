@@ -11,7 +11,7 @@ from fcdd.util.logging import Logger
 from fcdd.util.tb import TBLogger
 
 OBJECTIVES = ('fcdd', 'hsc', 'ae')
-SUPERVISE_MODES = ('unsupervised', 'other', 'noise', 'malformed_normal', 'malformed_normal_gt')
+SUPERVISE_MODES = ('unsupervised', 'other', 'noise', 'malformed_normal', 'malformed_normal_gt', 'keen')
 
 
 def pick_opt_sched(net: BaseNet, lr: float, wdk: float, sched_params: [float], opt: str, sched: str):
@@ -55,7 +55,7 @@ def trainer_setup(
         objective: str, preproc: str, supervise_mode: str, nominal_label: int,
         online_supervision: bool, oe_limit: int, noise_mode: str,
         workers: int, quantile: float, resdown: int, gauss_std: float, blur_heatmaps: bool,
-        cuda: bool, config: str, log_start_time: int = None, normal_class: int = 0,
+        cuda: bool, config: str, save_epoch: int, save_dir: str, log_start_time: int = None, normal_class: int = 0
 ) -> dict:
     """
     Creates a complete setup for training, given all necessary parameter from a runner (seefcdd.runners.bases.py).
@@ -101,11 +101,11 @@ def trainer_setup(
     assert supervise_mode in SUPERVISE_MODES, 'unknown supervise mode: {}'.format(supervise_mode)
     assert noise_mode in MODES, 'unknown noise mode: {}'.format(noise_mode)
     device = torch.device('cuda:0') if cuda else torch.device('cpu')
-    logger = Logger(pt.abspath(pt.join(logdir, '')), exp_start_time=log_start_time)
+    logger = Logger.logger(pt.abspath(pt.join(logdir, '')), exp_start_time=log_start_time)
     tb_logger = TBLogger(pt.abspath(tb_logdir))
     ds = load_dataset(
         dataset, pt.abspath(pt.join(datadir, '')), normal_class, preproc, supervise_mode,
-        noise_mode, online_supervision, nominal_label, oe_limit, logger=logger
+        noise_mode, online_supervision, nominal_label, oe_limit
     )
     loaders = ds.loaders(batch_size=batch_size, num_workers=workers)
     net = load_nets(net, ds.shape, bias=bias)
@@ -121,15 +121,16 @@ def trainer_setup(
         ds_order = ['norm', 'anom']
     else:
         ds_order = ['anom', 'norm']
-    logger.imsave(
-        'ds_preview', ds.preview(20, num_workers=workers), nrow=20,
-        rowheaders=ds_order if not isinstance(ds.train_set, GTMapADDataset)
-        else [*ds_order, '', *['gtno' if s == 'norm' else 'gtan' for s in ds_order]]
-    )
+    # logger.imsave(
+    #     'ds_preview', ds.preview(20, num_workers=workers), nrow=20,
+    #     rowheaders=ds_order if not isinstance(ds.train_set, GTMapADDataset)
+    #     else [*ds_order, '', *['gtno' if s == 'norm' else 'gtan' for s in ds_order]]
+    # )
     return {
         'net': net, 'dataset_loaders': loaders, 'opt': optimizer, 'sched': scheduler, 'logger': logger,
         'device': device, 'objective': objective, 'quantile': quantile, 'resdown': resdown,
-        'gauss_std': gauss_std, 'blur_heatmaps': blur_heatmaps, 'tb_logger': tb_logger
+        'gauss_std': gauss_std, 'blur_heatmaps': blur_heatmaps, 'tb_logger': tb_logger,
+        'save_epoch': save_epoch, 'save_dir': save_dir
     }
 
 

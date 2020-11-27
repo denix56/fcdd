@@ -1,9 +1,11 @@
 import collections
 import os.path as pt
+import os
 from abc import abstractmethod, ABC
 from copy import deepcopy
 
 import numpy as np
+
 import torch
 import torch.nn.functional as F
 from torch import Tensor
@@ -37,7 +39,8 @@ def reorder(labels: [int], loss: Tensor, anomaly_scores: Tensor, imgs: Tensor, o
 
 class BaseTrainer(ABC):
     def __init__(self, net: BaseNet, opt: Optimizer, sched: _LRScheduler, dataset_loaders: (DataLoader, DataLoader),
-                 logger: Logger, tb_logger: TBLogger, device='cuda:0', **kwargs):
+                 logger: Logger, tb_logger: TBLogger, device='cuda:0', save_epoch: int = 5,
+                 save_dir: str = 'models', **kwargs):
         """
         Base class for trainers, defines a simple train method and a method to load snapshots.
         At least the abstract loss method needs to be implemented, as it is used in the
@@ -55,9 +58,10 @@ class BaseTrainer(ABC):
         self.opt = opt
         self.sched = sched
         self.train_loader, self.test_loader = dataset_loaders
-        self.logger = logger
         self.tb_logger = tb_logger
         self.device = device
+        self.save_epoch = save_epoch
+        self.save_dir = save_dir
 
     def train(self, epochs: int) -> BaseNet:
         """ Does epochs many full iteration of the data loader and trains the network with the data using self.loss """
@@ -76,7 +80,7 @@ class BaseTrainer(ABC):
                 loss = self.loss(outputs, inputs, labels)
                 loss.backward()
                 self.opt.step()
-                self.logger.log(
+                Logger.logger().log(
                     epoch, n_batch, len(self.train_loader), loss,
                     infoprint='LR {} ID {}'.format(
                         ['{:.0e}'.format(p['lr']) for p in self.opt.param_groups],
@@ -90,6 +94,9 @@ class BaseTrainer(ABC):
                 self.tb_logger.add_scalars(loss, self.opt.param_groups[0]['lr'], epoch)
                 self.tb_logger.add_images(inputs[mask], None, outputs[mask], True, epoch)
                 self.tb_logger.add_images(inputs[~mask], None, outputs[~mask], False, epoch)
+
+            if epoch % self.save_epoch == 0:
+                self.save_model()
         self.tb_logger.close()
         return self.net
 
@@ -103,6 +110,10 @@ class BaseTrainer(ABC):
 
     @abstractmethod
     def score(self, labels: Tensor, losses: Tensor, ins: Tensor, outs: Tensor):
+        pass
+
+    @abstractmethod
+    def save_model(self, epoch):
         pass
 
     def load(self, path: str) -> int:
@@ -155,11 +166,20 @@ class BaseADTrainer(BaseTrainer):
 
     def reduce_ascore(self, ascore: Tensor) -> Tensor:
         """ Reduces the anomaly score to be a score per image (detection). """
-        return ascore.reshape(ascore.size(0), -1).mean(1)
+        return ascore.mean(dim=(1, 2, 3))
 
     def reduce_pixelwise_ascore(self, ascore: Tensor) -> Tensor:
         """ Reduces the anomaly score to be a score per pixel (explanation). """
         return ascore.mean(1).unsqueeze(1)
+
+    def save_model(self, epoch):
+        os.makedirs(self.save_dir, exist_ok=True)
+        torch.save({
+            'model': self.net,
+            'opt': self.opt,
+            'epoch': epoch
+        }, pt.join(self.save_dir, 'fcdd_latest.pt'))
+
 
     def train(self, epochs: int, acc_batches=1) -> BaseNet:
         """
@@ -180,17 +200,27 @@ class BaseADTrainer(BaseTrainer):
             inputs = inputs.to(self.device)
             self.tb_logger.add_network(self.net, inputs)
 
+        has_inv_norm = False
+
+        dataset = self.test_loader.dataset
+        if isinstance(dataset, torch.utils.data.Subset):
+            dataset = dataset.dataset
+        if hasattr(dataset, 'inverse_normalize') and \
+                callable(dataset.inverse_normalize):
+            has_inv_norm = True
+
         for epoch in range(epochs):
             acc_data, acc_counter = [], 1
+            self.net.train()
             for n_batch, data in enumerate(self.train_loader):
-                if acc_counter < acc_batches and n_batch < len(self.train_loader) - 1:
-                    acc_data.append(data)
-                    acc_counter += 1
-                    continue
-                elif acc_batches > 1:
-                    acc_data.append(data)
-                    data = [torch.cat(d) for d in zip(*acc_data)]
-                    acc_data, acc_counter = [], 1
+                # if acc_counter < acc_batches and n_batch < len(self.train_loader) - 1:
+                #     acc_data.append(data)
+                #     acc_counter += 1
+                #     continue
+                # elif acc_batches > 1:
+                #     acc_data.append(data)
+                #     data = [torch.cat(d) for d in zip(*acc_data)]
+                #     acc_data, acc_counter = [], 1
 
                 if isinstance(self.train_loader.dataset, GTMapADDataset):
                     inputs, labels, gtmaps = data
@@ -206,12 +236,12 @@ class BaseADTrainer(BaseTrainer):
                 self.opt.step()
                 with torch.no_grad():
                     info = {}
-                    if len(set(labels.tolist())) > 1:
-                        swloss = self.loss(outputs, inputs, labels, gtmaps, reduce='none')
-                        swloss = swloss.reshape(swloss.size(0), -1).mean(-1)
-                        info = {'err_normal': swloss[labels == 0].mean(),
+                    swloss = self.loss(outputs, inputs, labels, gtmaps, reduce='none')
+                    swloss = swloss.reshape(swloss.size(0), -1).mean(-1)
+                    info = {'err_normal': swloss[labels == 0].mean(),
                                 'err_anomalous': swloss[labels != 0].mean()}
-                    self.logger.log(
+
+                    Logger.logger().log(
                         epoch, n_batch, len(self.train_loader), loss,
                         infoprint='LR {} ID {}{}'.format(
                             ['{:.0e}'.format(p['lr']) for p in self.opt.param_groups],
@@ -222,15 +252,107 @@ class BaseADTrainer(BaseTrainer):
                         info=info
                     )
 
-            self.tb_logger.add_weight_histograms(self.net, epoch)
-            if len(set(labels.tolist())) > 1:
+            if epoch % self.save_epoch == 0:
+                self.save_model(epoch)
+
+            with torch.no_grad():
+                self.net.eval()
+                self.tb_logger.add_weight_histograms(self.net, epoch)
+
+                acc_data, acc_counter = [], 1
+                n_visual = 4
+                visual_data = []
+                test_loss_normal = 0
+                test_loss_anomal = 0
+                n_normal = self.test_loader.dataset.targets.count(0)
+                n_anomal = len(self.test_loader.dataset) - n_normal
+                normal_counter = 0
+                anomal_counter = 0
+
+                normal_idx = np.random.default_rng().choice(n_normal, n_visual, replace=False)
+                anomal_idx = np.random.default_rng().choice(n_anomal, n_visual, replace=False)
+
+                for n_batch, data in enumerate(self.test_loader):
+                    # if acc_counter < acc_batches and n_batch < len(self.test_loader) - 1:
+                    #     acc_data.append(data)
+                    #     acc_counter += 1
+                    #     continue
+                    # elif acc_batches > 1:
+                    #     acc_data.append(data)
+                    #     data = [torch.cat(d) for d in zip(*acc_data)]
+                    #     acc_data, acc_counter = [], 1
+
+                    if isinstance(self.test_loader.dataset, GTMapADDataset):
+                        inputs, labels, gtmaps, inputs_orig = data
+                        gtmaps = gtmaps.to(self.device)
+                    else:
+                        inputs, labels, inputs_orig = data
+                        gtmaps = None
+
+                    inputs = inputs.to(self.device)
+                    inputs_orig = inputs_orig.to(self.device)
+                    outputs, test_loss, anomaly_score, _ = self._regular_forward(inputs, labels)
+                    mask = (labels == 0)
+
+                    test_loss = test_loss.reshape(test_loss.size(0), -1).mean(-1)
+                    test_loss_normal += test_loss[mask].sum().item()
+                    test_loss_anomal += test_loss[~mask].sum().item()
+
+                    n_mask_normal = mask.sum().item()
+                    mask_idx_normal = (normal_idx >= normal_counter) & \
+                                  (normal_idx < normal_counter + n_mask_normal)
+                    if np.any(mask_idx_normal):
+                        idx = normal_idx[mask_idx_normal] - normal_counter
+                        for i in idx:
+                            visual_data.append((inputs_orig[mask][i], labels[mask][i],
+                                                gtmaps[mask][i] if gtmaps else None, outputs[mask][i],
+                                                anomaly_score[mask][i]))
+
+                    normal_counter += n_mask_normal
+
+                    mask = ~mask
+                    n_mask_anomal = mask.sum().item()
+                    mask_anomal = (anomal_idx >= anomal_counter) & (anomal_idx < anomal_counter + n_mask_anomal)
+                    if np.any(mask_anomal):
+                        idx = anomal_idx[mask_anomal] - anomal_counter
+                        for i in idx:
+                            visual_data.append((inputs_orig[mask][i], labels[mask][i],
+                                                gtmaps[mask][i] if gtmaps else None, outputs[mask][i],
+                                                anomaly_score[mask][i]))
+                    anomal_counter += n_mask_anomal
+
+                test_loss = (test_loss_normal + test_loss_anomal) / (n_normal + n_anomal)
+                test_loss_normal /= n_normal
+                test_loss_anomal /= n_anomal
+
+                inputs, labels, gtmaps, outputs, anomaly_score = zip(*visual_data)
+                inputs = torch.stack(inputs)
+                labels = torch.stack(labels)
+                if gtmaps[0] is not None:
+                    gtmaps = torch.stack(gtmaps)
+                else:
+                    gtmaps = None
+                outputs = torch.stack(outputs)
+                anomaly_score = torch.stack(anomaly_score)
+
+                inputs = inputs.repeat(1, 3, 1, 1)
+                anomaly_score = self.reduce_ascore(anomaly_score)
+
                 mask = labels == 0
+
+                if has_inv_norm:
+                    inputs = dataset.inverse_normalize(inputs)
+
+                #outputs = torch.nn.functional.interpolate(outputs, size=inputs.shape[-2:])
+                outputs = self.net.receptive_upsample(outputs, reception=True, std=self.gauss_std, cpu=False)
+                outputs = F.interpolate(outputs, size=inputs.shape[-2:])
+
                 self.tb_logger.add_scalars(loss, info['err_normal'], info['err_anomalous'],
-                                        self.opt.param_groups[0]['lr'], epoch)
-                self.tb_logger.add_images(inputs[mask], gtmaps[mask] if gtmaps is not None else None,
-                                          outputs[mask], True, epoch)
-                self.tb_logger.add_images(inputs[~mask], gtmaps[~mask] if gtmaps is not None else None,
-                                          outputs[~mask], False, epoch)
+                                            self.opt.param_groups[0]['lr'], epoch, train=True)
+                self.tb_logger.add_scalars(test_loss, test_loss_normal, test_loss_anomal,
+                                           None, epoch, train=False)
+                self.tb_logger.add_images(inputs, anomaly_score, gtmaps if gtmaps is not None else None,
+                                            outputs, labels, epoch)
 
             self.sched.step()
         self.tb_logger.close()
@@ -267,7 +389,7 @@ class BaseADTrainer(BaseTrainer):
         """
         self.net = self.net.to(self.device).eval()
 
-        self.logger.print('Test training data...', fps=False)
+        Logger.logger().print('Test training data...', fps=False)
         labels, loss, anomaly_scores, imgs, outputs, gtmaps, grads = self._gather_data(
             self.train_loader
         )
@@ -276,7 +398,7 @@ class BaseADTrainer(BaseTrainer):
             name='train_heatmaps',
         )
 
-        self.logger.print('Test test data...', fps=False)
+        Logger.logger().print('Test test data...', fps=False)
         labels, loss, anomaly_scores, imgs, outputs, gtmaps, grads = self._gather_data(
             self.test_loader,
         )
@@ -319,7 +441,7 @@ class BaseADTrainer(BaseTrainer):
             all_outputs.append(outputs.detach().cpu())
             if grads is not None:
                 all_grads.append(grads.detach().cpu())
-            self.logger.print(
+            Logger.logger().print(
                 'TEST {:04d}/{:04d} ID {}{}'.format(
                     n_batch, len(loader), str(self.__class__)[8:-2],
                     ' NCLS {}'.format(loader.dataset.normal_classes)
@@ -374,9 +496,9 @@ class BaseADTrainer(BaseTrainer):
             }.
         """
         # Logging
-        self.logger.print('Computing test score...')
+        Logger.logger().print('Computing test score...')
         if torch.isnan(ascores).sum() > 0:
-            self.logger.logtxt('Could not compute test scores, since anomaly scores contain nan values!!!', True)
+            Logger.logger().logtxt('Could not compute test scores, since anomaly scores contain nan values!!!', True)
             return None
         red_ascores = self.reduce_ascore(ascores).tolist()
         std = self.gauss_std
@@ -385,18 +507,18 @@ class BaseADTrainer(BaseTrainer):
         fpr, tpr, thresholds = roc_curve(labels, red_ascores)
         roc_score = roc_auc_score(labels, red_ascores)
         roc_res = {'tpr': tpr, 'fpr': fpr, 'ths': thresholds, 'auc': roc_score}
-        self.logger.single_plot(
+        Logger.logger().single_plot(
             'roc_curve', tpr, fpr, xlabel='false positive rate', ylabel='true positive rate',
             legend=['auc={}'.format(roc_score)], subdir=subdir
         )
-        self.logger.single_save('roc', roc_res, subdir=subdir)
-        self.logger.logtxt('##### ROC TEST SCORE {} #####'.format(roc_score), print=True)
+        Logger.logger().single_save('roc', roc_res, subdir=subdir)
+        Logger.logger().logtxt('##### ROC TEST SCORE {} #####'.format(roc_score), print=True)
 
         # GTMAPS pixel-wise anomaly detection = explanation performance
         gtmap_roc_res, gtmap_prc_res = None, None
         use_grads = grads is not None
         if gtmaps is not None:
-            self.logger.print('Computing GT test score...')
+            Logger.logger().print('Computing GT test score...')
             ascores = self.reduce_pixelwise_ascore(ascores) if not use_grads else grads
             gtmaps = self.test_loader.dataset.dataset.get_original_gtmaps_normal_class()
             if isinstance(self.net, ReceptiveNet):  # Receptive field upsampling for FCDD nets
@@ -408,14 +530,14 @@ class BaseADTrainer(BaseTrainer):
             gtfpr, gttpr, gtthresholds = roc_curve(flat_gtmaps, flat_ascores)
             gt_roc_score = roc_auc_score(flat_gtmaps, flat_ascores)
             gtmap_roc_res = {'tpr': gttpr, 'fpr': gtfpr, 'ths': gtthresholds, 'auc': gt_roc_score}
-            self.logger.single_plot(
+            Logger.logger().single_plot(
                 'gtmap_roc_curve', gttpr, gtfpr, xlabel='false positive rate', ylabel='true positive rate',
                 legend=['auc={}'.format(gt_roc_score)], subdir=subdir
             )
-            self.logger.single_save(
+            Logger.logger().single_save(
                 'gtmap_roc', gtmap_roc_res, subdir=subdir
             )
-            self.logger.logtxt('##### GTMAP ROC TEST SCORE {} #####'.format(gt_roc_score), print=True)
+            Logger.logger().logtxt('##### GTMAP ROC TEST SCORE {} #####'.format(gt_roc_score), print=True)
 
         return {'roc': roc_res, 'gtmap_roc': gtmap_roc_res}
 
@@ -460,7 +582,7 @@ class BaseADTrainer(BaseTrainer):
                 ]
                 splits = np.array_split(sort, k)
                 idx = [s[int(n / (k - 1) * len(s)) if n != len(splits) - 1 else -1] for n, s in enumerate(splits)]
-                self.logger.logtxt(
+                Logger.logger().logtxt(
                     'Interpretation visualization paper image {} indicies for label {}: {}'
                     .format('{}_paper_lbl{}'.format(name, l), l, idx)
                 )
@@ -536,7 +658,7 @@ class BaseADTrainer(BaseTrainer):
                 )
             rows.append(torch.zeros_like(rows[-1]))
         name = '{}_{}'.format(name, norm)
-        self.logger.imsave(name, torch.cat(rows), nrow=nrow, scale_mode='none', subdir=subdir)
+        Logger.logger().imsave(name, torch.cat(rows), nrow=nrow, scale_mode='none', subdir=subdir)
 
     def _create_singlerow_heatmaps_picture(self, idx: [int], name: str, inpshp: torch.Size, lbl: int, subdir: str,
                                            res: int, imgs: Tensor, ascores: Tensor, grads: Tensor, gtmaps: Tensor,
@@ -580,8 +702,8 @@ class BaseADTrainer(BaseTrainer):
                 rows.append(self._image_processing(gtmaps[idx], inpshp, maxres=res, norm=None))
             tim = torch.cat(rows)
             imname = '{}_paper_{}_lbl{}'.format(name, norm, lbl)
-            self.logger.single_save(imname, torch.stack(rows), subdir=pt.join('tims', subdir))
-            self.logger.imsave(imname, tim, nrow=len(idx), scale_mode='none', subdir=subdir)
+            Logger.logger().single_save(imname, torch.stack(rows), subdir=pt.join('tims', subdir))
+            Logger.logger().imsave(imname, tim, nrow=len(idx), scale_mode='none', subdir=subdir)
 
     def _image_processing(self, imgs: Tensor, input_shape: torch.Size, blur: bool = False, maxres: int = 64,
                           qu: float = None, norm: str = 'local', colorize: bool = False, ref: Tensor = None,

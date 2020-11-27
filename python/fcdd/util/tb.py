@@ -3,6 +3,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid
 from matplotlib.pyplot import get_cmap
 import numpy as np
+import cv2 as cv
 
 class TBLogger:
     def __init__(self, log_dir):
@@ -13,19 +14,21 @@ class TBLogger:
         self.writer.add_scalar('LR', lr, epoch)
         self.writer.flush()
 
-    def add_scalars(self, loss, loss_normal, loss_anomal, lr, epoch):
-        self.writer.add_scalars('Loss/train', {
-            'total': loss,
-            'normal': loss_normal,
-            'anomalous': loss_anomal
+    def add_scalars(self, loss, loss_normal, loss_anomal, lr, epoch, train=True):
+        tag = 'train' if train else 'test'
+        self.writer.add_scalars('Loss', {
+            'total_{}'.format(tag): loss,
+            'normal_{}'.format(tag): loss_normal,
+            'anomalous_{}'.format(tag): loss_anomal
         }, epoch)
 
-        self.writer.add_scalar('LR', lr, epoch)
+        if lr is not None:
+            self.writer.add_scalar('LR', lr, epoch)
         self.writer.flush()
 
-    def add_images(self, inputs: torch.Tensor, gt_maps: (None, torch.Tensor), outputs: torch.Tensor,
-                   normal: bool, epoch: int):
-        main_tag = 'normal' if normal else 'anomalous'
+    def add_images(self, inputs: torch.Tensor, anomaly_score: torch.Tensor, gt_maps: (None, torch.Tensor), outputs: torch.Tensor,
+                   labels: torch.Tensor, epoch: int):
+        #main_tag = 'normal' if normal else 'anomalous'
 
         cmap = get_cmap('jet')
         outputs_new = []
@@ -37,15 +40,38 @@ class TBLogger:
 
         norm_ip(outputs, float(outputs.min()), float(outputs.max()))
         for img in outputs.squeeze(dim=1):
-            outputs_new.append(cmap(img.detach().cpu().numpy())[:, :, :3])
+            outputs_new.append(cmap(img.detach().cpu().numpy())[..., :3])
+        alpha = 0.5
         outputs = torch.tensor(outputs_new).permute(0, 3, 1, 2)
+        outputs = inputs.cpu() * (1 - alpha) + outputs * alpha
+
+        inputs_np = inputs.permute(0, 2, 3, 1).mul(255).clamp(0, 255).to(torch.uint8).cpu().numpy().copy()
+        font = cv.FONT_HERSHEY_SIMPLEX
+        bottomLeftCornerOfText = (40, 500)
+        fontScale = 1
+        fontColor = (255, 0, 0)
+        thickness = 2
+        lineType = cv.LINE_AA
+
+        for i in range(inputs_np.shape[0]):
+            cv.putText(inputs_np[i], '{:.6f}'.format(anomaly_score[i].item()),
+                       bottomLeftCornerOfText,
+                       font,
+                       fontScale,
+                       fontColor,
+                       thickness,
+                       lineType)
+
+        inputs = torch.div(torch.tensor(inputs_np).to(torch.float32), 255).permute(0, 3, 1, 2)
 
         for tag, imgs in zip(['inputs', 'gt_maps', 'outputs'], [inputs, gt_maps, outputs]):
             if imgs is not None:
-                batch_size = imgs.size(0)
-                nrow = int(np.sqrt(batch_size))
-                grid = make_grid(imgs, nrow=nrow)
-                self.writer.add_image(main_tag + '/' + tag, grid, epoch)
+                for i, main_tag in enumerate(['normal', 'anomalous']):
+                    imgs2 = imgs[labels == i]
+                    batch_size = imgs2.size(0)
+                    nrow = int(np.sqrt(batch_size))
+                    grid = make_grid(imgs2, nrow=nrow)
+                    self.writer.add_image(main_tag + '/' + tag, grid, epoch)
         self.writer.flush()
 
     def add_network(self, model: torch.nn.Module, input_to_model):
