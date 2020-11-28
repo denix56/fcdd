@@ -67,19 +67,19 @@ class ADKeen(TorchvisionDataset):
         elif preproc in ['aug1']:
             test_part_transform = transforms.Compose([
                 transforms.Resize(self.raw_shape[-2:]),
-                #transforms.Lambda(remove_red_lines),
-                transforms.Lambda(remove_glare),
-                transforms.Grayscale(),
-                transforms.Lambda(CLAHE()),
             ])
 
             test_transform = transforms.Compose([
+                transforms.Lambda(remove_red_lines),
+                transforms.Lambda(remove_glare),
+                transforms.Grayscale(),
+                transforms.Lambda(CLAHE()),
                 transforms.ToTensor(),
                 transforms.Normalize(self.mean, self.std)
             ])
             transform = transforms.Compose([
                 transforms.Resize(self.raw_shape[-2:]),
-                #transforms.Lambda(remove_red_lines),
+                transforms.Lambda(remove_red_lines),
                 transforms.Lambda(remove_glare),
                 transforms.Grayscale(),
                 transforms.ColorJitter(brightness=0.01, contrast=0.01, saturation=0.01, hue=0.01),

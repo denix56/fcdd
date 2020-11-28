@@ -9,6 +9,11 @@ from typing import Callable
 from kornia.filters import get_gaussian_kernel2d
 import cv2
 from PIL import Image
+import skimage
+from skimage import io, transform, morphology, segmentation, measure
+from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import MinMaxScaler
+
 
 class TargetTransFunctor(object):
     def __init__(self, anomalous_label: int, outlier_classes: [int], nominal_label: int):
@@ -96,17 +101,89 @@ def remove_glare(x):
 #     # contours = [cnt for i, cnt in enumerate(contours) if cv2.boundingRect(cnt)]
 #     # cv2.drawContours(mask, contours, -1, (255), -1)
 
+# https://www.kaggle.com/icanfly/roi-cropping-and-specular-reflections-removing?scriptVersionId=1243073
+def find_roi_by_gsmix(img, mask=None):
+    h, w, _ = img.shape
+    x_coor = np.repeat(range(h), w)  # for calculating the R
+    y_coor = np.tile(range(w), h)
+    if mask is None:
+        center = [h / 2, w / 2]
+    else:
+        mask = mask.reshape(-1)
+        center = [np.mean(x_coor[mask == 1]), np.mean(y_coor[mask == 1])]
+    R = np.sqrt((x_coor - center[0]) ** 2 + (y_coor - center[1]) ** 2)  # R
+    A = img[:, :, 1].reshape(-1)  # A
+    #R = np.ones_like(A)
+    Ra = np.vstack([R, A]).T  # concat R and A
+
+    scaler = MinMaxScaler()
+    Ra = scaler.fit_transform(Ra)
+    gs_mix = GaussianMixture(n_components=2, random_state=42, init_params='kmeans')  # Gaussian mixture modele
+    gs_mix.fit(Ra)
+    labels = gs_mix.predict(Ra)
+
+    # Cluster with lowest R-mean will be chosen as ROI
+    means = gs_mix.means_
+    if means[0, 0] < means[1, 0]:
+        labels = 1 - labels
+    mask = labels.reshape(h, w).astype(np.uint8)
+
+    return mask
+
+
+def postprocess_mask(mask, morp=False):
+    selem = skimage.morphology.rectangle(2, 1)
+    mask = skimage.morphology.binary_erosion(mask, selem)
+
+    labels_mask = measure.label(mask)
+    regions = measure.regionprops(labels_mask)
+    regions.sort(key=lambda x: x.area, reverse=True)
+    # n = 5
+    # if len(regions) > n:
+    #     for rg in regions[n:]:
+    #         labels_mask[rg.coords[:, 0], rg.coords[:, 1]] = 0
+    # labels_mask[labels_mask != 0] = 1
+    # mask = labels_mask
+
+    # selem = skimage.morphology.rectangle(7, 3)
+    # mask = skimage.morphology.binary_dilation(mask, selem)
+    mask = skimage.morphology.remove_small_objects(mask > 0, 250, 2)
+
+    if morp:
+        selem = skimage.morphology.rectangle(20, 10)
+        mask = skimage.morphology.binary_erosion(mask, selem)
+        mask = skimage.morphology.binary_dilation(mask, selem)
+
+    return mask
 
 def remove_red_lines(x):
     img = np.asarray(x).copy()
 
     ## (1) Read and convert to HSV
+    # lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
+    # roi_mask = find_roi_by_gsmix(lab)
+    # roi_mask = postprocess_mask(roi_mask, False).astype(np.uint8)
+    # Image.fromarray(roi_mask*255).show()
+    # img[roi_mask == 1] = 0
+    #Image.fromarray(img).show()
     hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
-
     mask1 = cv2.inRange(hsv, (0, 70, 50), (10, 255, 255))
     mask2 = cv2.inRange(hsv, (170, 70, 50), (180, 255, 255))
 
     mask = mask1 | mask2
+    mmm = mask.mean(axis=1) / 255
+    mm = np.zeros(mmm.shape, dtype=np.bool)
+    mmm = np.nonzero(mmm)
+    mm[mmm[0][0]:mmm[0][-1]+1] = 1
+
+    mm[:100] = 0
+    mm[-100:] = 0
+    mask = np.zeros_like(mask)
+    mask[mm, :] = 1
+
+    selem = skimage.morphology.rectangle(7, 3)
+    mask = skimage.morphology.binary_dilation(mask, selem)
+
     img[mask > 0] = 0
 
     return Image.fromarray(img)
