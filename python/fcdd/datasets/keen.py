@@ -90,7 +90,58 @@ class ADKeen(TorchvisionDataset):
                 transforms.Lambda(AWGN(0.001)),
                 transforms.Normalize(self.mean, self.std)
             ])
+        elif preproc in ['aug2']:
+            test_part_transform = transforms.Compose([
+                transforms.Resize(self.raw_shape[-2:]),
+            ])
 
+            test_transform = transforms.Compose([
+                #transforms.Lambda(remove_red_lines),
+                #transforms.Lambda(remove_glare),
+                #transforms.Grayscale(),
+                #transforms.Lambda(CLAHE()),
+                transforms.ToTensor(),
+                transforms.Normalize(self.mean, self.std)
+            ])
+            transform = transforms.Compose([
+                transforms.Resize(self.raw_shape[-2:]),
+                #transforms.Lambda(remove_red_lines),
+                #transforms.Lambda(remove_glare),
+                #transforms.Grayscale(),
+                transforms.ColorJitter(brightness=0.01, contrast=0.01, saturation=0.01, hue=0.01),
+                #transforms.Lambda(CLAHE()),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomCrop(self.shape[-1]),
+                transforms.ToTensor(),
+                transforms.Lambda(AWGN(0.001)),
+                transforms.Normalize(self.mean, self.std)
+            ])
+        elif preproc in ['aug3']:
+            test_part_transform = transforms.Compose([
+                transforms.Resize(self.raw_shape[-2:]),
+            ])
+
+            test_transform = transforms.Compose([
+                transforms.Lambda(remove_red_lines),
+                # transforms.Lambda(remove_glare),
+                transforms.Grayscale(),
+                # transforms.Lambda(CLAHE()),
+                transforms.ToTensor(),
+                transforms.Normalize(self.mean, self.std)
+            ])
+            transform = transforms.Compose([
+                transforms.Resize(self.raw_shape[-2:]),
+                transforms.Lambda(remove_red_lines),
+                # transforms.Lambda(remove_glare),
+                transforms.Grayscale(),
+                transforms.ColorJitter(brightness=0.01, contrast=0.01, saturation=0.01, hue=0.01),
+                # transforms.Lambda(CLAHE()),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomCrop(self.shape[-1]),
+                transforms.ToTensor(),
+                transforms.Lambda(AWGN(0.001)),
+                transforms.Normalize(self.mean, self.std)
+            ])
         target_transform = transforms.Lambda(
             TargetTransFunctor(self.anomalous_label,
                                self.outlier_classes,

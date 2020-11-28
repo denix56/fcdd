@@ -38,7 +38,7 @@ class TBLogger:
             img.clamp_(min=min, max=max)
             img.add_(-min).div_(max - min + 1e-5)
 
-        norm_ip(outputs, float(outputs.min()), float(outputs.max()))
+        norm_ip(outputs.abs_(), float(outputs.min()), float(outputs.max()))
         for img in outputs.squeeze(dim=1):
             outputs_new.append(cmap(img.detach().cpu().numpy())[..., :3])
         alpha = 0.5
