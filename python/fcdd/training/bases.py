@@ -335,7 +335,8 @@ class BaseADTrainer(BaseTrainer):
                 outputs = torch.stack(outputs)
                 anomaly_score = torch.stack(anomaly_score)
 
-                inputs = inputs.repeat(1, 3, 1, 1)
+                if inputs.size(1) == 1:
+                    inputs = inputs.repeat(1, 3, 1, 1)
                 anomaly_score = self.reduce_ascore(anomaly_score)
 
                 mask = labels == 0
