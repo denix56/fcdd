@@ -62,6 +62,7 @@ class BaseTrainer(ABC):
         self.device = device
         self.save_epoch = save_epoch
         self.save_dir = save_dir
+        self.load_dir = None
 
     def train(self, epochs: int) -> BaseNet:
         """ Does epochs many full iteration of the data loader and trains the network with the data using self.loss """
@@ -175,10 +176,17 @@ class BaseADTrainer(BaseTrainer):
     def save_model(self, epoch):
         os.makedirs(self.save_dir, exist_ok=True)
         torch.save({
-            'model': self.net,
-            'opt': self.opt,
+            'model': self.net.state_dict(),
+            'opt': self.opt.state_dict(),
             'epoch': epoch
         }, pt.join(self.save_dir, 'fcdd_latest.pt'))
+
+    def load_model(self):
+        checkpoint = torch.load(self.load_dir)
+        self.net.load_state_dict(checkpoint['model'])
+        self.opt.load_state_dict(checkpoint['opt'])
+        epoch = checkpoint['epoch']
+        return epoch
 
 
     def train(self, epochs: int, acc_batches=1) -> BaseNet:
@@ -195,10 +203,16 @@ class BaseADTrainer(BaseTrainer):
         """
         assert 0 < acc_batches and isinstance(acc_batches, int)
         self.net = self.net.to(self.device).train()
+        start_epoch = 0
+
+        if self.load_dir is not None:
+            start_epoch = self.load_model()
+
         with torch.no_grad():
             inputs, _ = next(iter(self.train_loader))
             inputs = inputs.to(self.device)
-            self.tb_logger.add_network(self.net, inputs)
+            self.tb_logger.add_network(self.net.eval(), inputs)
+            self.net.train()
 
         has_inv_norm = False
 
@@ -209,7 +223,7 @@ class BaseADTrainer(BaseTrainer):
                 callable(dataset.inverse_normalize):
             has_inv_norm = True
 
-        for epoch in range(epochs):
+        for epoch in range(start_epoch, epochs):
             acc_data, acc_counter = [], 1
             self.net.train()
             for n_batch, data in enumerate(self.train_loader):
