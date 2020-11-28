@@ -4,6 +4,7 @@ from torchvision.utils import make_grid
 from matplotlib.pyplot import get_cmap
 import numpy as np
 import cv2 as cv
+from sklearn.metrics import roc_auc_score
 
 class TBLogger:
     def __init__(self, log_dir):
@@ -24,6 +25,11 @@ class TBLogger:
 
         if lr is not None:
             self.writer.add_scalar('LR', lr, epoch)
+        self.writer.flush()
+
+    def add_roc_auc_score(self, y_true, y_score, epoch: int):
+        auc = roc_auc_score(y_true, y_score)
+        self.writer.add_scalar('test/roc_auc_score', auc, global_step=epoch)
         self.writer.flush()
 
     def add_images(self, inputs: torch.Tensor, anomaly_score: torch.Tensor, gt_maps: (None, torch.Tensor), outputs: torch.Tensor,

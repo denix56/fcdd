@@ -40,7 +40,7 @@ def reorder(labels: [int], loss: Tensor, anomaly_scores: Tensor, imgs: Tensor, o
 class BaseTrainer(ABC):
     def __init__(self, net: BaseNet, opt: Optimizer, sched: _LRScheduler, dataset_loaders: (DataLoader, DataLoader),
                  logger: Logger, tb_logger: TBLogger, device='cuda:0', save_epoch: int = 5,
-                 save_dir: str = 'models', **kwargs):
+                 save_dir: str = 'models', load_path: str = None, **kwargs):
         """
         Base class for trainers, defines a simple train method and a method to load snapshots.
         At least the abstract loss method needs to be implemented, as it is used in the
@@ -62,7 +62,7 @@ class BaseTrainer(ABC):
         self.device = device
         self.save_epoch = save_epoch
         self.save_dir = save_dir
-        self.load_dir = None
+        self.load_path = load_path
 
     def train(self, epochs: int) -> BaseNet:
         """ Does epochs many full iteration of the data loader and trains the network with the data using self.loss """
@@ -182,7 +182,7 @@ class BaseADTrainer(BaseTrainer):
         }, pt.join(self.save_dir, 'fcdd_latest.pt'))
 
     def load_model(self):
-        checkpoint = torch.load(self.load_dir)
+        checkpoint = torch.load(self.load_path)
         self.net.load_state_dict(checkpoint['model'])
         self.opt.load_state_dict(checkpoint['opt'])
         epoch = checkpoint['epoch']
@@ -205,7 +205,7 @@ class BaseADTrainer(BaseTrainer):
         self.net = self.net.to(self.device).train()
         start_epoch = 0
 
-        if self.load_dir is not None:
+        if self.load_path is not None:
             start_epoch = self.load_model()
 
         with torch.no_grad():
@@ -286,6 +286,10 @@ class BaseADTrainer(BaseTrainer):
                 normal_idx = np.random.default_rng().choice(n_normal, n_visual, replace=False)
                 anomal_idx = np.random.default_rng().choice(n_anomal, n_visual, replace=False)
 
+                labels_all = np.empty(len(self.test_loader.dataset), dtype=np.int)
+                anomaly_scores_all = np.empty(len(self.test_loader.dataset))
+                all_i = 0
+
                 for n_batch, data in enumerate(self.test_loader):
                     # if acc_counter < acc_batches and n_batch < len(self.test_loader) - 1:
                     #     acc_data.append(data)
@@ -306,6 +310,11 @@ class BaseADTrainer(BaseTrainer):
                     inputs = inputs.to(self.device)
                     inputs_orig = inputs_orig.to(self.device)
                     outputs, test_loss, anomaly_score, _ = self._regular_forward(inputs, labels)
+
+                    labels_all[all_i:all_i+labels.size(0)] = labels.cpu().numpy().flatten()
+                    anomaly_scores_all[all_i:all_i+labels.size(0)] = self.reduce_ascore(anomaly_score).cpu().numpy().flatten()
+                    all_i += labels.size(0)
+
                     mask = (labels == 0)
 
                     test_loss = test_loss.reshape(test_loss.size(0), -1).mean(-1)
@@ -366,6 +375,7 @@ class BaseADTrainer(BaseTrainer):
                                             self.opt.param_groups[0]['lr'], epoch, train=True)
                 self.tb_logger.add_scalars(test_loss, test_loss_normal, test_loss_anomal,
                                            None, epoch, train=False)
+                self.tb_logger.add_roc_auc_score(labels_all, anomaly_scores_all, epoch)
                 self.tb_logger.add_images(inputs, anomaly_score, gtmaps if gtmaps is not None else None,
                                             outputs, labels, epoch)
 

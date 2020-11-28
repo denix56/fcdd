@@ -15,8 +15,9 @@ from fcdd.util.logging import Logger
 class SuperTrainer(object):
     def __init__(
             self, net: BaseNet, opt: Optimizer, sched: _LRScheduler, dataset_loaders: (DataLoader, DataLoader),
-            logger: Logger, tb_logger: TBLogger, save_epoch: int, save_dir: str, device=torch.device('cuda:0'), objective='fcdd',
-            quantile=0.93, resdown=64, gauss_std: float = None, blur_heatmaps=True
+            logger: Logger, tb_logger: TBLogger, save_epoch: int, save_dir: str, load_path: str,
+            device=torch.device('cuda:0'), objective='fcdd',quantile=0.93, resdown=64,
+            gauss_std: float = None, blur_heatmaps=True
     ):
         """
         This super trainer maintains networks, optimizers, schedulers, and everything related to training and testing.
@@ -54,19 +55,19 @@ class SuperTrainer(object):
             self.trainer = FCDDTrainer(
                 net=net, opt=opt, sched=sched, dataset_loaders=dataset_loaders, logger=logger, tb_logger=tb_logger,
                 objective=objective, gauss_std=gauss_std, quantile=quantile, resdown=resdown,
-                blur_heatmaps=blur_heatmaps, device=device, save_epoch=save_epoch, save_dir=save_dir
+                blur_heatmaps=blur_heatmaps, device=device, save_epoch=save_epoch, save_dir=save_dir, load_path=load_path
             )
         elif objective == 'hsc':
             self.trainer = HSCTrainer(
                 net=net, opt=opt, sched=sched, dataset_loaders=dataset_loaders, logger=logger, tb_logger=tb_logger,
                 objective=objective, gauss_std=gauss_std, quantile=quantile, resdown=resdown,
-                blur_heatmaps=blur_heatmaps, device=device, save_epoch=save_epoch, save_dir=save_dir
+                blur_heatmaps=blur_heatmaps, device=device, save_epoch=save_epoch, save_dir=save_dir, load_path=load_path
             )
         else:
             self.trainer = AETrainer(
                 net=net, opt=opt, sched=sched, dataset_loaders=dataset_loaders, logger=logger, tb_logger=tb_logger,
                 objective=objective, gauss_std=gauss_std, quantile=quantile, resdown=resdown,
-                blur_heatmaps=blur_heatmaps, device=device, save_epoch=save_epoch, save_dir=save_dir
+                blur_heatmaps=blur_heatmaps, device=device, save_epoch=save_epoch, save_dir=save_dir, load_path=load_path
             )
 
         self.tb_logger = tb_logger

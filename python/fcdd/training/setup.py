@@ -55,7 +55,7 @@ def trainer_setup(
         objective: str, preproc: str, supervise_mode: str, nominal_label: int,
         online_supervision: bool, oe_limit: int, noise_mode: str,
         workers: int, quantile: float, resdown: int, gauss_std: float, blur_heatmaps: bool,
-        cuda: bool, config: str, save_epoch: int, save_dir: str, log_start_time: int = None, normal_class: int = 0
+        cuda: bool, config: str, save_epoch: int, save_dir: str, load_path: str, log_start_time: int = None, normal_class: int = 0
 ) -> dict:
     """
     Creates a complete setup for training, given all necessary parameter from a runner (seefcdd.runners.bases.py).
@@ -130,7 +130,7 @@ def trainer_setup(
         'net': net, 'dataset_loaders': loaders, 'opt': optimizer, 'sched': scheduler, 'logger': logger,
         'device': device, 'objective': objective, 'quantile': quantile, 'resdown': resdown,
         'gauss_std': gauss_std, 'blur_heatmaps': blur_heatmaps, 'tb_logger': tb_logger,
-        'save_epoch': save_epoch, 'save_dir': save_dir
+        'save_epoch': save_epoch, 'save_dir': save_dir, 'load_path': load_path
     }
 
 

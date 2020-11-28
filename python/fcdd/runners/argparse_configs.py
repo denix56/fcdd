@@ -171,6 +171,11 @@ class DefaultConfig(object):
             help='Dir to save model .'
         )
 
+        parser.add_argument(
+            '--load_path', type=str, default=None,
+            help='Path to load model .'
+        )
+
         parser.set_defaults(cuda=True, bias=True, blur_heatmaps=False, online_supervision=True)
         return parser
 
