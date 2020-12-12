@@ -145,7 +145,7 @@ class ADKeen(TorchvisionDataset):
                 transforms.RandomApply([
                     transforms.GaussianBlur(3),
                     transforms.RandomErasing(value=1),
-                    transforms.RandomAffine(degrees=50, scale=(0.9, 1.1), translate=(0, 0.3))
+                    transforms.RandomAffine(degrees=60, scale=(0.9, 1.1), translate=(0, 0.4))
                 ], p=0.3),
                 transforms.Lambda(AWGN(0.01)),
                 transforms.Normalize(self.mean, self.std)

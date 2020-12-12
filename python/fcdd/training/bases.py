@@ -385,7 +385,7 @@ class BaseADTrainer(BaseTrainer):
                 self.tb_logger.add_images(inputs, anomaly_score, gtmaps if gtmaps is not None else None,
                                             outputs, labels, epoch)
 
-                if early_stop(test_loss, self.net):
+                if epoch > 10 and early_stop(test_loss, self.net):
                     break
 
             self.sched.step()
