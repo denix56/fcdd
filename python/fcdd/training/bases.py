@@ -225,6 +225,10 @@ class BaseADTrainer(BaseTrainer):
 
         for epoch in range(start_epoch, epochs):
             acc_data, acc_counter = [], 1
+            loss = 0
+            info = {}
+            info['err_normal'] = 0
+            info['err_anomalous'] = 0
             self.net.train()
             for n_batch, data in enumerate(self.train_loader):
                 # if acc_counter < acc_batches and n_batch < len(self.train_loader) - 1:
