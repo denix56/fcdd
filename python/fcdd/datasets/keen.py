@@ -1,6 +1,7 @@
 import os.path as pt
 import numpy as np
 import torch
+import random
 import torchvision.transforms as transforms
 from fcdd.datasets.bases import TorchvisionDataset
 from fcdd.datasets.online_superviser import OnlineSuperviser
@@ -125,28 +126,28 @@ class ADKeen(TorchvisionDataset):
                 #transforms.Lambda(remove_red_lines),
                 # transforms.Lambda(remove_glare),
                 transforms.Grayscale(),
+                transforms.Lambda(CLAHE()),
                 transforms.ToTensor(),
                 transforms.Normalize(self.mean, self.std)
             ])
+            
             transform = transforms.Compose([
                 transforms.Resize(self.raw_shape[-2:]),
-                #transforms.Lambda(remove_red_lines),
+                # transforms.Lambda(remove_red_lines),
                 # transforms.Lambda(remove_glare),
                 transforms.Grayscale(),
-                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
                 transforms.RandomHorizontalFlip(),
                 transforms.RandomVerticalFlip(),
                 transforms.RandomCrop(self.shape[-1]),
-                transforms.RandomApply([
-                    transforms.Lambda(CLAHE()),
-                ]),
+                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+                transforms.Lambda(CLAHE()),
                 transforms.ToTensor(),
                 transforms.RandomApply([
                     transforms.GaussianBlur(3),
                     transforms.RandomErasing(value=1),
                     transforms.RandomAffine(degrees=50, scale=(0.9, 1.1))
-                ]),
-                transforms.Lambda(AWGN(0.001)),
+                ], p=0.3),
+                transforms.Lambda(AWGN(0.01)),
                 transforms.Normalize(self.mean, self.std)
             ])
         target_transform = transforms.Lambda(
