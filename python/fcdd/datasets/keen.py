@@ -137,9 +137,11 @@ class ADKeen(TorchvisionDataset):
                 transforms.RandomHorizontalFlip(),
                 transforms.RandomVerticalFlip(),
                 transforms.RandomCrop(self.shape[-1]),
+                transforms.RandomApply([
+                    transforms.Lambda(CLAHE()),
+                ]),
                 transforms.ToTensor(),
                 transforms.RandomApply([
-                    #transforms.Lambda(CLAHE()),
                     transforms.GaussianBlur(3),
                     transforms.RandomErasing(value=1),
                     transforms.RandomAffine(degrees=50, scale=(0.9, 1.1))

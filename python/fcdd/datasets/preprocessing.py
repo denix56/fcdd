@@ -196,11 +196,7 @@ class CLAHE:
         self.clahe = None
 
     def __call__(self, x):
-        if torch.is_tensor(x):
-            img = TF.to_pil_image(x)
-        else:
-            img = x
-        img = np.asarray(img)
+        img = np.asarray(x)
 
         is_rgb = len(img.shape) == 3 and img.shape[2] == 3
 
@@ -218,10 +214,7 @@ class CLAHE:
         else:
             res = self.clahe.apply(img)
 
-        res = Image.fromarray(res)
-        if torch.is_tensor(x):
-            res = TF.pil_to_tensor(res)
-        return res
+        return Image.fromarray(res)
 
 
 def get_target_label_idx(labels: np.ndarray, targets: np.ndarray):
