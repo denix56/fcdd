@@ -125,7 +125,7 @@ class ADKeen(TorchvisionDataset):
                 transforms.Lambda(remove_red_lines),
                 # transforms.Lambda(remove_glare),
                 transforms.Grayscale(),
-                # transforms.Lambda(CLAHE()),
+                transforms.Lambda(CLAHE()),
                 transforms.ToTensor(),
                 transforms.Normalize(self.mean, self.std)
             ])
@@ -135,8 +135,9 @@ class ADKeen(TorchvisionDataset):
                 # transforms.Lambda(remove_glare),
                 transforms.Grayscale(),
                 transforms.ColorJitter(brightness=0.01, contrast=0.01, saturation=0.01, hue=0.01),
-                # transforms.Lambda(CLAHE()),
+                transforms.Lambda(CLAHE()),
                 transforms.RandomHorizontalFlip(),
+                transforms.RandomVerticalFlip(),
                 transforms.RandomCrop(self.shape[-1]),
                 transforms.ToTensor(),
                 transforms.Lambda(AWGN(0.001)),
