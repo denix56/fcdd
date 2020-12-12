@@ -17,6 +17,7 @@ from fcdd.datasets.bases import GTMapADDataset
 from fcdd.datasets.noise import kernel_size_to_std
 from fcdd.models.bases import BaseNet, ReceptiveNet
 from fcdd.util.logging import colorize as colorize_img, Logger
+from fcdd.util.early_stopping import EarlyStopping
 from fcdd.util.tb import TBLogger
 from fcdd.training import balance_labels
 from kornia import gaussian_blur2d
@@ -204,6 +205,7 @@ class BaseADTrainer(BaseTrainer):
         assert 0 < acc_batches and isinstance(acc_batches, int)
         self.net = self.net.to(self.device).train()
         start_epoch = 0
+        early_stop = EarlyStopping(path=os.path.join(self.save_dir, 'checkpoint.pt'))
 
         if self.load_path is not None:
             start_epoch = self.load_model()
@@ -382,6 +384,9 @@ class BaseADTrainer(BaseTrainer):
                 self.tb_logger.add_roc_auc_score(labels_all, anomaly_scores_all, epoch)
                 self.tb_logger.add_images(inputs, anomaly_score, gtmaps if gtmaps is not None else None,
                                             outputs, labels, epoch)
+
+                if early_stop(test_loss, self.net):
+                    break
 
             self.sched.step()
         self.tb_logger.close()
