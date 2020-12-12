@@ -179,7 +179,7 @@ class BaseADTrainer(BaseTrainer):
             'model': self.net.state_dict(),
             'opt': self.opt.state_dict(),
             'epoch': epoch
-        }, pt.join(self.save_dir, 'fcdd_{}.pt'.join(epoch)))
+        }, pt.join(self.save_dir, 'fcdd_{}.pt'.format(epoch)))
 
     def load_model(self):
         checkpoint = torch.load(self.load_path)
