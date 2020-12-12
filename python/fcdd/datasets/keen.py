@@ -139,7 +139,7 @@ class ADKeen(TorchvisionDataset):
                 transforms.RandomCrop(self.shape[-1]),
                 transforms.ToTensor(),
                 transforms.RandomApply([
-                    transforms.Lambda(CLAHE()),
+                    #transforms.Lambda(CLAHE()),
                     transforms.GaussianBlur(3),
                     transforms.RandomErasing(value=1),
                     transforms.RandomAffine(degrees=50, scale=(0.9, 1.1))
