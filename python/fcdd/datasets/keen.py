@@ -17,6 +17,7 @@ from PIL import Image
 
 class ADKeen(TorchvisionDataset):
     base_folder = 'keen'
+    is_rgb = False
 
     def __init__(self, root: str, normal_class: int, preproc: str, nominal_label: int,
                  supervise_mode: str, noise_mode: str, oe_limit: int, online_supervision: bool, logger: Logger = None):
@@ -40,7 +41,7 @@ class ADKeen(TorchvisionDataset):
 
 
         self.n_classes = 2  # 0: normal, 1: outlier
-        self.shape = (3, 224, 224)
+        self.shape = (3 if ADKeen.is_rgb else 1, 224, 224)
         self.raw_shape = (3, 512, 256)
         self.normal_classes = tuple([normal_class])
         self.outlier_classes = list(range(2))
@@ -54,6 +55,9 @@ class ADKeen(TorchvisionDataset):
         # self.std = np.array([0.1482])
         self.mean = np.array([0.485, 0.456, 0.406])
         self.std = np.array([0.229, 0.224, 0.225])
+        if not ADKeen.is_rgb:
+            self.mean = self.mean.mean(keepdims=True)
+            self.std = self.std.mean(keepdims=True)
         inv_mean = -np.divide(self.mean, self.std)
         inv_std = 1/self.std
 
@@ -129,7 +133,7 @@ class ADKeen(TorchvisionDataset):
             test_transform = transforms.Compose([
                 #transforms.Lambda(remove_red_lines),
                 # transforms.Lambda(remove_glare),
-                #transforms.Grayscale(),
+                transforms.Grayscale(),
                 transforms.Lambda(CLAHE()),
                 transforms.ToTensor(),
                 transforms.Normalize(self.mean, self.std)
@@ -139,7 +143,7 @@ class ADKeen(TorchvisionDataset):
                 transforms.Resize(self.raw_shape[-2:]),
                 # transforms.Lambda(remove_red_lines),
                 # transforms.Lambda(remove_glare),
-                #transforms.Grayscale(),
+                transforms.Grayscale(),
                 transforms.RandomHorizontalFlip(),
                 transforms.RandomVerticalFlip(),
                 transforms.RandomCrop(self.shape[-1]),
@@ -149,7 +153,7 @@ class ADKeen(TorchvisionDataset):
                 # transforms.RandomApply([
                 #     transforms.GaussianBlur(3),
                 # ], p=0.3),
-                transforms.RandomAffine(degrees=40, scale=(0.9, 1.1), translate=(0, 0.3)),
+                transforms.RandomAffine(degrees=90, scale=(0.9, 1.1), translate=(0.01, 0.3)),
                 transforms.Lambda(AWGN(0.01)),
                 transforms.Normalize(self.mean, self.std),
                 transforms.RandomErasing(p=0.3, value=1.0)

@@ -383,7 +383,7 @@ class BaseADTrainer(BaseTrainer):
                                            None, epoch, train=False)
                 self.tb_logger.add_roc_auc_score(labels_all, anomaly_scores_all, epoch)
                 self.tb_logger.add_images(inputs, anomaly_score, gtmaps if gtmaps is not None else None,
-                                            outputs, labels, epoch)
+                                            outputs, labels, epoch, scale_each=True)
 
                 if epoch > 10 and early_stop(test_loss, self.net):
                     break
