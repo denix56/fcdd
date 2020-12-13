@@ -168,7 +168,7 @@ class BaseADTrainer(BaseTrainer):
 
     def reduce_ascore(self, ascore: Tensor) -> Tensor:
         """ Reduces the anomaly score to be a score per image (detection). """
-        return ascore.mean(dim=(1, 2, 3))
+        return torch.sqrt((ascore**2).mean(dim=(1,2,3)))
 
     def reduce_pixelwise_ascore(self, ascore: Tensor) -> Tensor:
         """ Reduces the anomaly score to be a score per pixel (explanation). """

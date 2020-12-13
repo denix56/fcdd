@@ -33,7 +33,7 @@ class TBLogger:
         self.writer.flush()
 
     def add_images(self, inputs: torch.Tensor, anomaly_score: torch.Tensor, gt_maps: (None, torch.Tensor), outputs: torch.Tensor,
-                   labels: torch.Tensor, epoch: int):
+                   labels: torch.Tensor, epoch: int, scale_each: bool = False):
         #main_tag = 'normal' if normal else 'anomalous'
 
         cmap = get_cmap('jet')
@@ -44,7 +44,12 @@ class TBLogger:
             img.clamp_(min=min, max=max)
             img.add_(-min).div_(max - min + 1e-5)
 
-        norm_ip(outputs.abs_(), float(outputs.min()), float(outputs.max()))
+        if scale_each:
+            for t in outputs:
+                norm_ip(t.abs_(), float(t.min()), float(t.max()))
+        else:
+            norm_ip(outputs.abs_(), float(outputs.min()), float(outputs.max()))
+
         for img in outputs.squeeze(dim=1):
             outputs_new.append(cmap(img.detach().cpu().numpy())[..., :3])
         alpha = 0.5
@@ -70,14 +75,30 @@ class TBLogger:
 
         inputs = torch.div(torch.tensor(inputs_np).to(torch.float32), 255).permute(0, 3, 1, 2)
 
-        for tag, imgs in zip(['inputs', 'gt_maps', 'outputs'], [inputs, gt_maps, outputs]):
-            if imgs is not None:
-                for i, main_tag in enumerate(['normal', 'anomalous']):
-                    imgs2 = imgs[labels == i]
-                    batch_size = imgs2.size(0)
-                    nrow = int(np.sqrt(batch_size))
-                    grid = make_grid(imgs2, nrow=nrow)
-                    self.writer.add_image(main_tag + '/' + tag, grid, epoch)
+        # ['inputs', 'gt_maps', 'outputs']
+        for i, main_tag in enumerate(['normal', 'anomalous']):
+        #for inp, gt, out in zip(inputs, gt_maps, outputs):
+            #if imgs is not None:
+            img_list = []
+            if gt_maps is None:
+                for inp, out in zip(inputs[labels == i], outputs[labels == i]):
+                    img_list.append(inp)
+                    img_list.append(out)
+                #img_list = [inputs[labels == i], outputs[labels == i]]
+            else:
+                if gt_maps is None:
+                    for inp, out in zip(inputs[labels == i], outputs[labels == i]):
+                        img_list.append(inp)
+                        img_list.append(out)
+                else:
+                    for inp, out, gt in zip(inputs[labels == i], outputs[labels == i], gt_maps[labels == i]):
+                        img_list.append(inp)
+                        img_list.append(out)
+                        img_list.append(gt)
+            #batch_size = imgs2.size(0)
+            # nrow = int(np.sqrt(batch_size))
+            grid = make_grid(img_list, nrow=2 if gt_maps is None else 3)
+            self.writer.add_image(main_tag, grid, epoch)
         self.writer.flush()
 
     def add_network(self, model: torch.nn.Module, input_to_model):

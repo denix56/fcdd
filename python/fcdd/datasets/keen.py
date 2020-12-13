@@ -40,7 +40,7 @@ class ADKeen(TorchvisionDataset):
 
 
         self.n_classes = 2  # 0: normal, 1: outlier
-        self.shape = (1, 224, 224)
+        self.shape = (3, 224, 224)
         self.raw_shape = (3, 512, 256)
         self.normal_classes = tuple([normal_class])
         self.outlier_classes = list(range(2))
@@ -50,8 +50,12 @@ class ADKeen(TorchvisionDataset):
         self.anomalous_label = 1 if self.nominal_label == 0 else 0
 
         # mean and std of original pictures per class
-        self.mean = np.array([0.51])
-        self.std = np.array([0.1482])
+        # self.mean = np.array([0.51])
+        # self.std = np.array([0.1482])
+        self.mean = np.array([0.485, 0.456, 0.406])
+        self.std = np.array([0.229, 0.224, 0.225])
+        inv_mean = -np.divide(self.mean, self.std)
+        inv_std = 1/self.std
 
         if self.nominal_label != 0:
             print('Swapping labels, i.e. anomalies are 0 and nominals are 1.')
@@ -125,7 +129,7 @@ class ADKeen(TorchvisionDataset):
             test_transform = transforms.Compose([
                 #transforms.Lambda(remove_red_lines),
                 # transforms.Lambda(remove_glare),
-                transforms.Grayscale(),
+                #transforms.Grayscale(),
                 transforms.Lambda(CLAHE()),
                 transforms.ToTensor(),
                 transforms.Normalize(self.mean, self.std)
@@ -135,16 +139,16 @@ class ADKeen(TorchvisionDataset):
                 transforms.Resize(self.raw_shape[-2:]),
                 # transforms.Lambda(remove_red_lines),
                 # transforms.Lambda(remove_glare),
-                transforms.Grayscale(),
+                #transforms.Grayscale(),
                 transforms.RandomHorizontalFlip(),
                 transforms.RandomVerticalFlip(),
                 transforms.RandomCrop(self.shape[-1]),
                 transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
                 transforms.Lambda(CLAHE()),
                 transforms.ToTensor(),
-                transforms.RandomApply([
-                    transforms.GaussianBlur(3),
-                ], p=0.3),
+                # transforms.RandomApply([
+                #     transforms.GaussianBlur(3),
+                # ], p=0.3),
                 transforms.RandomAffine(degrees=40, scale=(0.9, 1.1), translate=(0, 0.3)),
                 transforms.Lambda(AWGN(0.01)),
                 transforms.Normalize(self.mean, self.std),
@@ -162,7 +166,7 @@ class ADKeen(TorchvisionDataset):
 
         train_set = MYKeen(root=self.root, train=True,
                            transform=transform, target_transform=target_transform, all_transform=all_transform,
-                           inv_mean=-self.mean/self.std, inv_std=1/self.std)
+                           inv_mean=inv_mean, inv_std=inv_std)
         train_set.targets = torch.tensor(train_set.targets)
 
         self._generate_artificial_anomalies_train_set(
@@ -173,7 +177,7 @@ class ADKeen(TorchvisionDataset):
         self._test_set = MYKeen(root=self.root, train=False,
                                 transform=test_transform, target_transform=target_transform,
                                 test_part_transform=test_part_transform,
-                                inv_mean=-self.mean/self.std, inv_std=1/self.std)
+                                inv_mean=inv_mean, inv_std=inv_std)
 
 
 class MYKeen(ImageFolder):
