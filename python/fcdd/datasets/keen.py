@@ -144,11 +144,11 @@ class ADKeen(TorchvisionDataset):
                 transforms.ToTensor(),
                 transforms.RandomApply([
                     transforms.GaussianBlur(3),
-                    transforms.RandomErasing(value=1),
-                    transforms.RandomAffine(degrees=60, scale=(0.9, 1.1), translate=(0, 0.4))
                 ], p=0.3),
+                transforms.RandomAffine(degrees=40, scale=(0.9, 1.1), translate=(0, 0.3)),
                 transforms.Lambda(AWGN(0.01)),
-                transforms.Normalize(self.mean, self.std)
+                transforms.Normalize(self.mean, self.std),
+                transforms.RandomErasing(p=0.3, value=1.0)
             ])
         target_transform = transforms.Lambda(
             TargetTransFunctor(self.anomalous_label,
